@@ -46,7 +46,7 @@ with col2:
             impulse_prob = 0.001 * severity
             impulses = (np.random.rand(len(t)) < impulse_prob).astype(float) * severity * 0.5
             signal_data = base_signal + impulses
-         elif fault_type == "Imbalance":
+        elif fault_type == "Imbalance":
           # УСИЛЕННОЕ моделирование дисбаланса: увеличиваем амплитуду и добавляем модуляцию
             imbalance_effect = 0.5 * severity  # Сила дисбаланса
             signal_data = base_signal * (1 + imbalance_effect * np.sin(2 * np.pi * 50 * t))
