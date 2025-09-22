@@ -53,13 +53,13 @@ with col2:
           # Добавляем легкие импульсы от вибрации на высоких оборотах
             impulses = (np.random.rand(len(t)) < 0.003 * severity).astype(float) * severity * 0.3
             signal_data = signal_data + impulses
-          elif fault_type == "Misalignment":
-           # СИЛЬНО УСИЛЕННОЕ моделирование Misalignment
-           # Добавляем мощную вторую гармонику (2X) и немного случайных импульсов
-             harmonic_2x = 0.7 * severity * np.sin(2 * np.pi * 100 * t + np.pi/4)
+        elif fault_type == "Misalignment":
+          # СИЛЬНО УСИЛЕННОЕ моделирование Misalignment
+          # Добавляем мощную вторую гармонику (2X) и немного случайных импульсов
+            harmonic_2x = 0.7 * severity * np.sin(2 * np.pi * 100 * t + np.pi/4)
            # Добавляем случайные импульсы, характерные для серьезного misalignment
-             impulses = (np.random.rand(len(t)) < 0.005 * severity).astype(float) * severity * 0.8
-             signal_data = base_signal + harmonic_2x + impulses
+            impulses = (np.random.rand(len(t)) < 0.005 * severity).astype(float) * severity * 0.8
+            signal_data = base_signal + harmonic_2x + impulses
 
         # Извлечение признаков
         rms = np.sqrt(np.mean(signal_data**2))
