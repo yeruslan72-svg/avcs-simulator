@@ -48,10 +48,10 @@ with col2:
             signal_data = base_signal + impulses
         elif fault_type == "Imbalance":
             signal_data = base_signal * (1 + 0.1 * severity * np.sin(2 * np.pi * 50 * t))
-                elif fault_type == "Misalignment":
-                # Усиливаем эффект misalignment: добавляем мощную гармонику 2X
-                misalignment_effect = 0.3 * severity * np.sin(2 * np.pi * 100 * t + np.pi/4)
-                signal_data = base_signal + misalignment_effect
+        elif fault_type == "Misalignment":
+        # Усиливаем эффект misalignment: добавляем мощную гармонику 2X
+            misalignment_effect = 0.3 * severity * np.sin(2 * np.pi * 100 * t + np.pi/4)
+            signal_data = base_signal + misalignment_effect
 
         # Извлечение признаков
         rms = np.sqrt(np.mean(signal_data**2))
