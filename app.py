@@ -46,8 +46,13 @@ with col2:
             impulse_prob = 0.001 * severity
             impulses = (np.random.rand(len(t)) < impulse_prob).astype(float) * severity * 0.5
             signal_data = base_signal + impulses
-        elif fault_type == "Imbalance":
-            signal_data = base_signal * (1 + 0.1 * severity * np.sin(2 * np.pi * 50 * t))
+         elif fault_type == "Imbalance":
+         # УСИЛЕННОЕ моделирование дисбаланса: увеличиваем амплитуду и добавляем модуляцию
+             imbalance_effect = 0.5 * severity  # Сила дисбаланса
+             signal_data = base_signal * (1 + imbalance_effect * np.sin(2 * np.pi * 50 * t))
+          # Добавляем легкие импульсы от вибрации на высоких оборотах
+             impulses = (np.random.rand(len(t)) < 0.003 * severity).astype(float) * severity * 0.3
+             signal_data = signal_data + impulses
         elif fault_type == "Misalignment":
          # СИЛЬНО УСИЛЕННОЕ моделирование Misalignment
          # Добавляем мощную вторую гармонику (2X) и немного случайных импульсов
