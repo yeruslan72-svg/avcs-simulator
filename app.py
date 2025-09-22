@@ -49,9 +49,12 @@ with col2:
         elif fault_type == "Imbalance":
             signal_data = base_signal * (1 + 0.1 * severity * np.sin(2 * np.pi * 50 * t))
         elif fault_type == "Misalignment":
-        # Усиливаем эффект misalignment: добавляем мощную гармонику 2X
-            misalignment_effect = 0.3 * severity * np.sin(2 * np.pi * 100 * t + np.pi/4)
-            signal_data = base_signal + misalignment_effect
+         # СИЛЬНО УСИЛЕННОЕ моделирование Misalignment
+         # Добавляем мощную вторую гармонику (2X) и немного случайных импульсов
+             harmonic_2x = 0.7 * severity * np.sin(2 * np.pi * 100 * t + np.pi/4)
+         # Добавляем случайные импульсы, характерные для серьезного misalignment
+             impulses = (np.random.rand(len(t)) < 0.005 * severity).astype(float) * severity * 0.8
+             signal_data = base_signal + harmonic_2x + impulses
 
         # Извлечение признаков
         rms = np.sqrt(np.mean(signal_data**2))
