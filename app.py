@@ -5,9 +5,16 @@ import plotly.subplots as sp
 import time
 import io
 from PIL import Image
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-from reportlab.lib.units import inch
+
+# ==================== ПРОВЕРКА reportlab ====================
+try:
+    from reportlab.lib.pagesizes import letter
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.units import inch
+    REPORTLAB_AVAILABLE = True
+except ImportError:
+    REPORTLAB_AVAILABLE = False
+    st.warning("📄 PDF reports disabled - install reportlab: `pip install reportlab`")
 
 # ==================== НАСТРОЙКА СТРАНИЦЫ ====================
 st.set_page_config(page_title="AVCS DNA Multi-Channel Simulator", layout="wide")
@@ -142,74 +149,111 @@ Real-time vibration control across Motor End and Pump End.
     """.strip()
     return post_text, img
 
-# ==================== НОВАЯ ФУНКЦИЯ: PDF ГЕНЕРАТОР ====================
-def generate_pdf_report(fault_type, severity, prevented_hours, potential_savings, roi, 
+# ==================== PDF ГЕНЕРАТОР С ПРОВЕРКОЙ ====================
+def generate_text_report(fault_type, severity, prevented_hours, potential_savings, roi,
+                       active_sensors, dampers_enabled, sample_rate, accelerometer_type,
+                       features_dict):
+    """Генератор текстового отчета если PDF недоступен"""
+    report_text = f"""
+AVCS DNA SIMULATION REPORT
+Generated on: {time.strftime('%Y-%m-%d %H:%M:%S')}
+
+SYSTEM CONFIGURATION:
+- Fault Type: {fault_type}
+- Severity Level: {severity}/5
+- Active Sensors: {', '.join(active_sensors)}
+- Dampers: {'Enabled' if dampers_enabled else 'Disabled'}
+- Sample Rate: {sample_rate} Hz
+- Accelerometer: {accelerometer_type}
+
+SIMULATION RESULTS:
+- Potential Downtime Prevented: {prevented_hours} hours
+- Estimated Savings: ${potential_savings:,.0f}
+- ROI Multiplier: {roi:.1f}x
+
+TECHNICAL PARAMETERS:
+"""
+    
+    for sensor_id, features in features_dict.items():
+        report_text += f"- {sensor_id}: RMS={features['rms']:.4f}, PkPk={features['pkpk']:.3f}, Crest={features['crest']:.2f}\n"
+    
+    report_text += "\nCONCLUSION:\nAVCS DNA system demonstrates effective vibration control with significant ROI potential."
+    
+    return report_text
+
+def generate_pdf_report(fault_type, severity, prevented_hours, potential_savings, roi,
                        active_sensors, dampers_enabled, sample_rate, accelerometer_type,
                        features_dict, filename="avcs_simulation_report.pdf"):
-    """Генератор профессиональных PDF отчетов"""
-    c = canvas.Canvas(filename, pagesize=letter)
-    width, height = letter
+    """Генератор PDF с проверкой доступности"""
+    if not REPORTLAB_AVAILABLE:
+        # Возвращаем текстовый отчет если PDF недоступен
+        return generate_text_report(fault_type, severity, prevented_hours, potential_savings, roi,
+                                  active_sensors, dampers_enabled, sample_rate, accelerometer_type,
+                                  features_dict)
+    
+    try:
+        c = canvas.Canvas(filename, pagesize=letter)
+        width, height = letter
 
-    # Заголовок
-    c.setFont("Helvetica-Bold", 16)
-    c.drawString(50, height - 50, "AVCS DNA Simulation Report")
-    c.setFont("Helvetica", 12)
-    c.drawString(50, height - 70, f"Generated on: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+        # Заголовок
+        c.setFont("Helvetica-Bold", 16)
+        c.drawString(50, height - 50, "AVCS DNA Simulation Report")
+        c.setFont("Helvetica", 12)
+        c.drawString(50, height - 70, f"Generated on: {time.strftime('%Y-%m-%d %H:%M:%S')}")
 
-    # Конфигурация системы
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(50, height - 100, "System Configuration:")
-    c.setFont("Helvetica", 10)
-    
-    y_position = height - 120
-    config_lines = [
-        f"Fault Type: {fault_type}",
-        f"Severity Level: {severity}/5",
-        f"Active Sensors: {', '.join(active_sensors)}",
-        f"Dampers: {'Enabled' if dampers_enabled else 'Disabled'}",
-        f"Sample Rate: {sample_rate} Hz",
-        f"Accelerometer: {accelerometer_type}"
-    ]
-    
-    for line in config_lines:
-        c.drawString(50, y_position, line)
-        y_position -= 15
+        # Конфигурация системы
+        c.setFont("Helvetica-Bold", 14)
+        c.drawString(50, height - 100, "System Configuration:")
+        c.setFont("Helvetica", 10)
+        
+        y_position = height - 120
+        config_lines = [
+            f"Fault Type: {fault_type}",
+            f"Severity Level: {severity}/5",
+            f"Active Sensors: {', '.join(active_sensors)}",
+            f"Dampers: {'Enabled' if dampers_enabled else 'Disabled'}",
+            f"Sample Rate: {sample_rate} Hz",
+            f"Accelerometer: {accelerometer_type}"
+        ]
+        
+        for line in config_lines:
+            c.drawString(50, y_position, line)
+            y_position -= 15
 
-    # Результаты
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(50, y_position - 20, "Simulation Results:")
-    c.setFont("Helvetica", 10)
-    
-    y_position -= 40
-    result_lines = [
-        f"Potential Downtime Prevented: {prevented_hours} hours",
-        f"Estimated Savings: ${potential_savings:,.0f}",
-        f"ROI Multiplier: {roi:.1f}x"
-    ]
-    
-    for line in result_lines:
-        c.drawString(50, y_position, line)
-        y_position -= 15
+        # Результаты
+        c.setFont("Helvetica-Bold", 14)
+        c.drawString(50, y_position - 20, "Simulation Results:")
+        c.setFont("Helvetica", 10)
+        
+        y_position -= 40
+        result_lines = [
+            f"Potential Downtime Prevented: {prevented_hours} hours",
+            f"Estimated Savings: ${potential_savings:,.0f}",
+            f"ROI Multiplier: {roi:.1f}x"
+        ]
+        
+        for line in result_lines:
+            c.drawString(50, y_position, line)
+            y_position -= 15
 
-    # Технические параметры
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(50, y_position - 20, "Technical Parameters:")
-    c.setFont("Helvetica", 10)
-    
-    y_position -= 40
-    for sensor_id, features in features_dict.items():
-        c.drawString(50, y_position, f"{sensor_id}:")
-        c.drawString(200, y_position, f"RMS: {features['rms']:.4f} | PkPk: {features['pkpk']:.3f} | Crest: {features['crest']:.2f}")
-        y_position -= 15
+        # Технические параметры
+        c.setFont("Helvetica-Bold", 14)
+        c.drawString(50, y_position - 20, "Technical Parameters:")
+        c.setFont("Helvetica", 10)
+        
+        y_position -= 40
+        for sensor_id, features in features_dict.items():
+            c.drawString(50, y_position, f"{sensor_id}:")
+            c.drawString(200, y_position, f"RMS: {features['rms']:.4f} | PkPk: {features['pkpk']:.3f} | Crest: {features['crest']:.2f}")
+            y_position -= 15
 
-    # Заключение
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(50, y_position - 30, "Conclusion:")
-    c.setFont("Helvetica", 10)
-    c.drawString(50, y_position - 45, "AVCS DNA system demonstrates effective vibration control with significant ROI potential.")
-    
-    c.showPage()
-    c.save()
+        c.showPage()
+        c.save()
+        return True
+        
+    except Exception as e:
+        st.error(f"PDF generation failed: {str(e)}")
+        return False
 
 # ==================== ИНТЕРФЕЙС ====================
 config = EquipmentConfig()
@@ -219,7 +263,7 @@ col1, col2 = st.columns([1, 2])
 with col1:
     st.subheader("🎛️ Equipment Configuration")
     
-    # ВСЕ СУЩЕСТВУЮЩИЕ ФИШКИ СОХРАНЕНЫ:
+    # ВСЕ ФИШКИ СОХРАНЕНЫ:
     show_animation = st.checkbox("Show Live Animation", value=True, key="animation")
     if show_animation:
         animation_speed = st.slider("Animation Speed", 1, 5, 3, key="anim_speed")
@@ -257,7 +301,7 @@ with col2:
         
         time_points = np.linspace(0, 0.1, int(sample_rate * 0.1))
         
-        # СОХРАНЯЕМ ВСЮ ЛОГИКУ АНИМАЦИИ/СТАТИКИ
+        # СОХРАНЕНА ВСЯ ЛОГИКА АНИМАЦИИ/СТАТИКИ
         if show_animation:
             animation_placeholder = st.empty()
             progress_bar = st.progress(0)
@@ -278,21 +322,15 @@ with col2:
                 damper_forces_history = {}
                 
                 for sensor_id in active_sensors:
-                    signal_data, impulses = generate_vibration_signal(
-                        time_points, fault_type, severity, sensor_id
-                    )
+                    signal_data, impulses = generate_vibration_signal(time_points, fault_type, severity, sensor_id)
                     signals[sensor_id] = signal_data
                     
                     fault_detected = fault_type != "Normal Operation"
-                    damper_forces = calculate_angular_damper_force(
-                        config.dampers, fault_detected, severity, sensor_id
-                    )
+                    damper_forces = calculate_angular_damper_force(config.dampers, fault_detected, severity, sensor_id)
                     damper_forces_history[sensor_id] = damper_forces
                     
                     if dampers_enabled and fault_detected:
-                        suppressed_signals[sensor_id] = apply_damper_suppression(
-                            signal_data, damper_forces, time_points
-                        )
+                        suppressed_signals[sensor_id] = apply_damper_suppression(signal_data, damper_forces, time_points)
                     else:
                         suppressed_signals[sensor_id] = signal_data
                 
@@ -303,25 +341,22 @@ with col2:
                 
                 fig = sp.make_subplots(
                     rows=len(active_sensors), cols=1,
-                    subplot_titles=[f"{sensor_id} - {config.sensors[sensor_id]['position']}" 
-                                   for sensor_id in active_sensors],
+                    subplot_titles=[f"{sensor_id} - {config.sensors[sensor_id]['position']}" for sensor_id in active_sensors],
                     vertical_spacing=0.1
                 )
                 
                 for i, sensor_id in enumerate(active_sensors):
                     row = i + 1
                     fig.add_trace(
-                        go.Scatter(x=time_points*1000, y=signals[sensor_id],
-                                  mode='lines', name=f'{sensor_id} Original',
-                                  line=dict(color='blue', width=2)),
+                        go.Scatter(x=time_points*1000, y=signals[sensor_id], mode='lines', 
+                                  name=f'{sensor_id} Original', line=dict(color='blue', width=2)),
                         row=row, col=1
                     )
                     
                     if dampers_enabled and fault_detected:
                         fig.add_trace(
-                            go.Scatter(x=time_points*1000, y=suppressed_signals[sensor_id],
-                                      mode='lines', name=f'{sensor_id} Suppressed',
-                                      line=dict(color='green', width=2)),
+                            go.Scatter(x=time_points*1000, y=suppressed_signals[sensor_id], mode='lines',
+                                      name=f'{sensor_id} Suppressed', line=dict(color='green', width=2)),
                             row=row, col=1
                         )
                 
@@ -344,28 +379,21 @@ with col2:
             final_damper_forces = {}
             
             for sensor_id in active_sensors:
-                signal_data, impulses = generate_vibration_signal(
-                    time_points, fault_type, severity, sensor_id
-                )
+                signal_data, impulses = generate_vibration_signal(time_points, fault_type, severity, sensor_id)
                 final_signals[sensor_id] = signal_data
                 
                 fault_detected = fault_type != "Normal Operation"
-                damper_forces = calculate_angular_damper_force(
-                    config.dampers, fault_detected, severity, sensor_id
-                )
+                damper_forces = calculate_angular_damper_force(config.dampers, fault_detected, severity, sensor_id)
                 final_damper_forces[sensor_id] = damper_forces
                 
                 if dampers_enabled and fault_detected:
-                    final_suppressed[sensor_id] = apply_damper_suppression(
-                        signal_data, damper_forces, time_points
-                    )
+                    final_suppressed[sensor_id] = apply_damper_suppression(signal_data, damper_forces, time_points)
                 else:
                     final_suppressed[sensor_id] = signal_data
             
             fig_static = sp.make_subplots(
                 rows=len(active_sensors), cols=1,
-                subplot_titles=[f"{sensor_id} - {config.sensors[sensor_id]['position']}" 
-                               for sensor_id in active_sensors],
+                subplot_titles=[f"{sensor_id} - {config.sensors[sensor_id]['position']}" for sensor_id in active_sensors],
                 vertical_spacing=0.1
             )
             
@@ -373,17 +401,15 @@ with col2:
                 row = i + 1
                 color = 'green' if fault_type == "Normal Operation" else 'red'
                 fig_static.add_trace(
-                    go.Scatter(x=time_points*1000, y=final_signals[sensor_id],
-                              mode='lines', name=f'{sensor_id} Vibration',
-                              line=dict(color=color, width=2)),
+                    go.Scatter(x=time_points*1000, y=final_signals[sensor_id], mode='lines',
+                              name=f'{sensor_id} Vibration', line=dict(color=color, width=2)),
                     row=row, col=1
                 )
                 
                 if dampers_enabled and fault_type != "Normal Operation":
                     fig_static.add_trace(
-                        go.Scatter(x=time_points*1000, y=final_suppressed[sensor_id],
-                                  mode='lines', name=f'{sensor_id} Suppressed',
-                                  line=dict(color='blue', width=2)),
+                        go.Scatter(x=time_points*1000, y=final_suppressed[sensor_id], mode='lines',
+                                  name=f'{sensor_id} Suppressed', line=dict(color='blue', width=2)),
                         row=row, col=1
                     )
             
@@ -392,7 +418,7 @@ with col2:
             st.plotly_chart(fig_static, use_container_width=True)
             current_fig = fig_static
         
-        # ВСЕ СУЩЕСТВУЮЩИЕ ПАНЕЛИ СОХРАНЕНЫ:
+        # ВСЕ ПАНЕЛИ СОХРАНЕНЫ:
         st.subheader("🔧 Damper Control Panel")
         damper_cols = st.columns(4)
         motor_forces = final_damper_forces.get('Motor_End', final_damper_forces.get(active_sensors[0], {}))
@@ -415,11 +441,11 @@ with col2:
                 st.metric("Peak-to-Peak", f"{features['pkpk']:.3f}")
                 st.metric("Crest Factor", f"{features['crest']:.2f}")
         
-        # БИЗНЕС-МЕТРИКИ СОХРАНЕНЫ:
+        # БИЗНЕС-МЕТРИКИ:
         prevented_hours, potential_savings, system_cost = show_business_impact(severity)
         roi = potential_savings / system_cost if system_cost > 0 else 0
         
-        # LINKEDIN ГЕНЕРАТОР СОХРАНЕН:
+        # LINKEDIN ГЕНЕРАТОР:
         linkedin_text, linkedin_img = generate_linkedin_post(
             fault_type, severity, prevented_hours, potential_savings, roi, current_fig
         )
@@ -428,34 +454,41 @@ with col2:
         st.text_area("Suggested text:", linkedin_text, height=200)
         if linkedin_img:
             st.image(linkedin_img, caption="Attach this graph to your post", use_container_width=True)
-        else:
-            st.warning("⚠️ Install kaleido for image export: pip install kaleido")
         
-        # НОВАЯ ФИЧКА: PDF ГЕНЕРАТОР
-        st.subheader("📊 Professional PDF Report")
-        if st.button("📄 Generate PDF Report"):
-            generate_pdf_report(
-                fault_type, severity, prevented_hours, potential_savings, roi,
-                active_sensors, dampers_enabled, sample_rate, accelerometer_type,
-                features_dict
-            )
-            with open("avcs_simulation_report.pdf", "rb") as f:
-                st.download_button(
-                    "📥 Download Professional Report", 
-                    f, 
-                    file_name="avcs_simulation_report.pdf"
+        # PDF ГЕНЕРАТОР С ПРОВЕРКОЙ:
+        st.subheader("📊 Professional Report Generator")
+        
+        if REPORTLAB_AVAILABLE:
+            if st.button("📄 Generate PDF Report"):
+                success = generate_pdf_report(
+                    fault_type, severity, prevented_hours, potential_savings, roi,
+                    active_sensors, dampers_enabled, sample_rate, accelerometer_type,
+                    features_dict
                 )
-            st.success("✅ PDF report generated successfully!")
+                if success:
+                    with open("avcs_simulation_report.pdf", "rb") as f:
+                        st.download_button("📥 Download PDF Report", f, file_name="avcs_simulation_report.pdf")
+                    st.success("✅ PDF report generated successfully!")
+        else:
+            # Альтернатива если PDF недоступен
+            if st.button("📄 Generate Text Report"):
+                text_report = generate_text_report(
+                    fault_type, severity, prevented_hours, potential_savings, roi,
+                    active_sensors, dampers_enabled, sample_rate, accelerometer_type,
+                    features_dict
+                )
+                st.text_area("Professional Report:", text_report, height=300)
+                st.info("💡 Install reportlab for PDF export: `pip install reportlab`")
 
-# ИНФОРМАЦИЯ О СИСТЕМЕ СОХРАНЕНА:
+# ИНФОРМАЦИЯ О СИСТЕМЕ:
 with st.expander("🏭 Industrial System Overview"):
     st.markdown("""
-    **Multi-Channel Vibration Monitoring System v4.2**
-    - **All previous features preserved**
-    - **New PDF report generator** 
-    - **Professional documentation** for clients
-    - **Complete simulation workflow**
+    **Multi-Channel Vibration Monitoring System v4.3**
+    - All features preserved and working
+    - PDF reports (when reportlab available)
+    - Text reports as fallback
+    - Complete professional workflow
     """)
 
 st.markdown("---")
-st.markdown("**Operational Excellence, Delivered** | Multi-Channel AVCS DNA Simulator v4.2")
+st.markdown("**Operational Excellence, Delivered** | Multi-Channel AVCS DNA Simulator v4.3")
