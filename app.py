@@ -165,47 +165,227 @@ with col1:
     dampers_enabled = st.checkbox("**Enable Active Dampers**", value=True)
 
     show_animation = st.checkbox("**Show Live Animation**", value=True)
+    animation_speed = st.slider("**Animation Speed**", 1, 5, 3) if show_animation else 3
 
     run_simulation = st.button("▶️ Start Live Simulation", type="primary")
 
+# Основная логика
 if run_simulation:
-    # Статическая версия графика (для LinkedIn)
-    t = np.linspace(0, 0.1, 1000)
-    base_signal = np.sin(2 * np.pi * 50 * t) + 0.1 * np.random.randn(1000)
+    if show_animation:
+        # ==================== АНИМАЦИОННАЯ ВЕРСИЯ ====================
+        animation_placeholder = st.empty()
+        progress_bar = st.progress(0)
+        status_display = st.empty()
+        
+        num_frames = 10
+        time_points = np.linspace(0, 0.1, 500)
+        
+        # Сохраняем финальные данные для LinkedIn
+        final_signal_data = None
+        final_suppressed_signal = None
+        final_fault_detected = None
+        
+        for frame in range(num_frames):
+            progress = (frame + 1) / num_frames
+            progress_bar.progress(progress)
+            status_display.text(f"🎬 Live Simulation: Frame {frame+1}/{num_frames}")
+            
+            # Генерация сигнала с анимацией
+            base_frequency = 50 + 2 * np.sin(frame * 0.2)  # Плавное изменение частоты
+            base_signal = np.sin(2 * np.pi * base_frequency * time_points)
+            base_signal += 0.1 * np.random.randn(len(time_points))
+            
+            # Моделирование неисправности с анимацией
+            if fault_type == "Normal Operation":
+                signal_data = base_signal
+                fault_detected = False
+                impulses = np.zeros_like(time_points)
+            elif "Bearing_Fault" in fault_type:
+                impulse_prob = 0.01 * severity * (1 + 0.5 * np.sin(frame * 0.3))  # Пульсирующие импульсы
+                impulses = (np.random.rand(len(time_points)) < impulse_prob).astype(float) * severity * 0.8
+                signal_data = base_signal + impulses
+                fault_detected = True
+            elif fault_type == "Imbalance":
+                imbalance_effect = 0.3 * severity * (1 + 0.2 * np.sin(frame * 0.4))
+                signal_data = base_signal * (1 + imbalance_effect * np.sin(2 * np.pi * 50 * time_points))
+                fault_detected = severity >= 1
+                impulses = np.zeros_like(time_points)
+            elif fault_type == "Misalignment":
+                harmonic_strength = 0.4 * severity * (1 + 0.1 * np.sin(frame * 0.3))
+                harmonic_2x = harmonic_strength * np.sin(2 * np.pi * 100 * time_points + frame * 0.2)
+                signal_data = base_signal + harmonic_2x
+                fault_detected = severity >= 1
+                impulses = np.zeros_like(time_points)
 
-    if fault_type == "Normal Operation":
-        signal_data = base_signal
-        fault_detected = False
-    elif "Bearing_Fault" in fault_type:
-        impulses = (np.random.rand(1000) < 0.02 * severity).astype(float) * severity * 0.8
-        signal_data = base_signal + impulses
-        fault_detected = True
+            # Демпферы с анимацией
+            suppressed_signal, damper_force = simulate_dampers(signal_data, fault_detected, severity, dampers_enabled)
+            
+            # Сохраняем последний кадр для LinkedIn
+            if frame == num_frames - 1:
+                final_signal_data = signal_data
+                final_suppressed_signal = suppressed_signal
+                final_fault_detected = fault_detected
+            
+            # Визуализация анимации
+            fig_anim = go.Figure()
+            fig_anim.add_trace(go.Scatter(
+                x=time_points*1000, 
+                y=signal_data, 
+                mode='lines', 
+                name='Vibration', 
+                line=dict(color='blue', width=2)
+            ))
+            
+            if "Bearing_Fault" in fault_type:
+                fig_anim.add_trace(go.Scatter(
+                    x=time_points*1000, 
+                    y=impulses, 
+                    mode='lines', 
+                    name='Bearing Impacts', 
+                    line=dict(color='orange', width=2)
+                ))
+            
+            if dampers_enabled and fault_detected and len(suppressed_signal) > 0:
+                fig_anim.add_trace(go.Scatter(
+                    x=time_points*1000, 
+                    y=suppressed_signal, 
+                    mode='lines', 
+                    name='Suppressed', 
+                    line=dict(color='green', width=2)
+                ))
+                
+                if len(damper_force) > 0:
+                    fig_anim.add_trace(go.Scatter(
+                        x=time_points*1000, 
+                        y=damper_force/50,
+                        mode='lines', 
+                        name='Damper Force/50', 
+                        line=dict(color='red', width=2, dash='dot'),
+                        yaxis='y2'
+                    ))
+                    
+                    fig_anim.update_layout(
+                        yaxis2=dict(
+                            title="Damper Force (N/50)",
+                            overlaying='y',
+                            side='right'
+                        )
+                    )
+            
+            # Статус аномалии
+            status_color = "green" if not fault_detected else "red"
+            status_text = "🟢 NORMAL" if not fault_detected else "🔴 FAULT DETECTED"
+            
+            fig_anim.add_annotation(
+                x=0.02, y=0.98, xref="paper", yref="paper",
+                text=status_text,
+                showarrow=False, 
+                bgcolor="white", 
+                bordercolor=status_color,
+                borderwidth=2,
+                font=dict(color=status_color, size=12)
+            )
+            
+            fig_anim.update_layout(
+                title=f"Live Animation - Frame {frame+1}/{num_frames} - {fault_type}", 
+                height=400,
+                showlegend=True,
+                xaxis_title="Time (ms)",
+                yaxis_title="Amplitude"
+            )
+            
+            animation_placeholder.plotly_chart(fig_anim, use_container_width=True)
+            time.sleep(0.5 / animation_speed)
+        
+        progress_bar.empty()
+        status_display.success("✅ Live simulation completed!")
+        
+        # Инженерная панель для финального кадра
+        features = calculate_features(final_signal_data)
+        show_engineering_panel(final_signal_data, final_suppressed_signal, final_fault_detected, 
+                             severity, fault_type, dampers_enabled, features)
+        
+        # LinkedIn для анимационной версии
+        fig_linkedin = go.Figure()
+        color = "green" if not final_fault_detected else "red"
+        fig_linkedin.add_trace(go.Scatter(
+            x=time_points*1000, 
+            y=final_signal_data, 
+            mode='lines', 
+            name='Vibration', 
+            line=dict(color=color, width=3)
+        ))
+        
+        if dampers_enabled and final_fault_detected:
+            fig_linkedin.add_trace(go.Scatter(
+                x=time_points*1000, 
+                y=final_suppressed_signal, 
+                mode='lines', 
+                name='Suppressed', 
+                line=dict(color='blue', width=2)
+            ))
+        
+        fig_linkedin.update_layout(
+            height=400, 
+            title=f"AVCS DNA Simulation - {fault_type}",
+            showlegend=True
+        )
+        
     else:
-        signal_data = base_signal * (1 + 0.3 * severity * np.sin(2 * np.pi * 50 * t))
-        fault_detected = severity >= 1
+        # ==================== СТАТИЧЕСКАЯ ВЕРСИЯ ====================
+        t = np.linspace(0, 0.1, 1000)
+        base_signal = np.sin(2 * np.pi * 50 * t) + 0.1 * np.random.randn(1000)
 
-    suppressed_signal, damper_force = simulate_dampers(signal_data, fault_detected, severity, dampers_enabled)
-    features = calculate_features(signal_data)
+        if fault_type == "Normal Operation":
+            signal_data = base_signal
+            fault_detected = False
+        elif "Bearing_Fault" in fault_type:
+            impulses = (np.random.rand(1000) < 0.02 * severity).astype(float) * severity * 0.8
+            signal_data = base_signal + impulses
+            fault_detected = True
+        else:
+            signal_data = base_signal * (1 + 0.3 * severity * np.sin(2 * np.pi * 50 * t))
+            fault_detected = severity >= 1
 
-    fig = go.Figure()
-    color = "green" if not fault_detected else "red"
-    fig.add_trace(go.Scatter(y=signal_data, mode='lines', name='Vibration', line=dict(color=color, width=2)))
+        suppressed_signal, damper_force = simulate_dampers(signal_data, fault_detected, severity, dampers_enabled)
+        features = calculate_features(signal_data)
 
-    if dampers_enabled and fault_detected:
-        fig.add_trace(go.Scatter(y=suppressed_signal, mode='lines', name='Suppressed', line=dict(color='blue', width=2)))
+        # График для статической версии
+        fig_linkedin = go.Figure()
+        color = "green" if not fault_detected else "red"
+        fig_linkedin.add_trace(go.Scatter(
+            y=signal_data, 
+            mode='lines', 
+            name='Vibration', 
+            line=dict(color=color, width=2)
+        ))
 
-    fig.update_layout(height=400, title=f"Simulation - {fault_type}")
-    st.plotly_chart(fig, use_container_width=True)
+        if dampers_enabled and fault_detected:
+            fig_linkedin.add_trace(go.Scatter(
+                y=suppressed_signal, 
+                mode='lines', 
+                name='Suppressed', 
+                line=dict(color='blue', width=2)
+            ))
 
-    show_engineering_panel(signal_data, suppressed_signal, fault_detected, 
-                         severity, fault_type, dampers_enabled, features)
+        fig_linkedin.update_layout(
+            height=400, 
+            title=f"Simulation - {fault_type}",
+            showlegend=True
+        )
+        
+        st.plotly_chart(fig_linkedin, use_container_width=True)
+        show_engineering_panel(signal_data, suppressed_signal, fault_detected, 
+                             severity, fault_type, dampers_enabled, features)
+        final_fault_detected = fault_detected
 
+    # Бизнес-метрики и LinkedIn (общие для обеих версий)
     prevented_hours, potential_savings, system_cost = show_business_impact(severity)
     roi = potential_savings / system_cost if system_cost > 0 else 0
 
     # LinkedIn блок
     linkedin_text, linkedin_img = generate_linkedin_post(
-        fault_type, severity, prevented_hours, potential_savings, roi, fig
+        fault_type, severity, prevented_hours, potential_savings, roi, fig_linkedin
     )
 
     st.subheader("📢 LinkedIn-ready Post")
@@ -243,4 +423,4 @@ with col3:
     st.markdown("Case studies & ROI analysis")
 
 st.markdown("---")
-st.markdown("**Operational Excellence, Delivered** | © 2024 AVCS DNA Technology Simulator v3.3")
+st.markdown("**Operational Excellence, Delivered** | © 2024 AVCS DNA Technology Simulator v3.4")
