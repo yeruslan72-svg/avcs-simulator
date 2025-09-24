@@ -3,6 +3,7 @@ import numpy as np
 import plotly.graph_objects as go
 import time
 import io
+from PIL import Image
 
 # ==================== Настройка страницы ====================
 st.set_page_config(page_title="AVCS DNA Simulator | Engineering Panel", layout="wide")
@@ -90,10 +91,11 @@ def show_business_impact(severity):
 def generate_linkedin_post(fault_type,severity,prevented_hours,potential_savings,roi,fig):
     buf = io.BytesIO()
     try:
-        fig.write_image(buf, format="png") # kaleido
-        img_bytes = buf.getvalue()
+        fig.write_image(buf, format="png")
+        buf.seek(0)
+        img = Image.open(buf)
     except:
-        img_bytes = None
+        img = None
     text = f"""
 🚀 **Predictive Maintenance – AVCS DNA**
 Fault simulated: **{fault_type}**  
@@ -103,79 +105,103 @@ Estimated savings: **${potential_savings:,.0f}**
 ROI multiplier: **{roi:.1f}x**
 #PredictiveMaintenance #OperationalExcellence
     """.strip()
-    return text,img_bytes
+    return text,img
 
 # ==================== Интерфейс ====================
 col1,col2 = st.columns([1,2])
 with col1:
     st.subheader("🎛️ Configuration")
-    fault_type = st.selectbox("**Fault Type**", ["Normal Operation","Bearing_Fault_Mild","Bearing_Fault_Severe","Imbalance","Misalignment"],key="fault_type")
-    severity = st.slider("**Fault Severity**",1,5,1,key="severity")
-    dampers_enabled = st.checkbox("**Enable Active Dampers**",value=True,key="dampers")
-    run_sim = st.button("▶️ Start Live Simulation",type="primary",key="run")
+    fault_type = st.selectbox("**Fault Type**", ["Normal Operation","Bearing_Fault_Mild","Bearing_Fault_Severe","Imbalance","Misalignment"])
+    severity = st.slider("**Fault Severity**",1,5,1)
+    dampers_enabled = st.checkbox("**Enable Active Dampers**",value=True)
+    enable_animation = st.checkbox("Enable Live Animation", value=True)
+    animation_speed = st.slider("Animation Speed",1,5,3)
+    run_sim = st.button("▶️ Start Simulation",type="primary")
 
-# ==================== Анимация ====================
+# ==================== Симуляция ====================
 if run_sim:
-    animation_placeholder = st.empty()
-    num_frames = 15
     time_points = np.linspace(0,0.1,500)
-
     final_signal = None
     final_suppressed = None
     final_fault = None
 
-    for frame in range(num_frames):
-        base_freq = 50 + 2*np.sin(frame*0.2)
-        base_signal = np.sin(2*np.pi*base_freq*time_points) + 0.1*np.random.randn(len(time_points))
+    if enable_animation:
+        animation_placeholder = st.empty()
+        num_frames = 15
+        for frame in range(num_frames):
+            base_freq = 50 + 2*np.sin(frame*0.2)
+            base_signal = np.sin(2*np.pi*base_freq*time_points) + 0.1*np.random.randn(len(time_points))
 
+            if fault_type=="Normal Operation":
+                signal_data = base_signal
+                fault_detected = False
+            elif "Bearing_Fault" in fault_type:
+                prob = 0.01*severity*(1+0.5*np.sin(frame*0.3))
+                impulses = (np.random.rand(len(time_points))<prob).astype(float)*severity*0.8
+                signal_data = base_signal + impulses
+                fault_detected = True
+            elif fault_type=="Imbalance":
+                signal_data = base_signal*(1 + 0.3*severity*np.sin(2*np.pi*50*time_points))
+                fault_detected = True
+            else:
+                harmonic = 0.4*severity*np.sin(2*np.pi*100*time_points)
+                signal_data = base_signal + harmonic
+                fault_detected = True
+
+            suppressed_signal, damper_force = simulate_dampers(signal_data, fault_detected, severity, dampers_enabled)
+
+            if frame==num_frames-1:
+                final_signal = signal_data
+                final_suppressed = suppressed_signal
+                final_fault = fault_detected
+
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=time_points*1000, y=signal_data, mode='lines', name='Vibration', line=dict(color='blue')))
+            if fault_detected:
+                fig.add_trace(go.Scatter(x=time_points*1000, y=suppressed_signal, mode='lines', name='Suppressed', line=dict(color='green')))
+            fig.update_layout(title=f"Live Simulation - Frame {frame+1}/{num_frames}", height=400)
+            animation_placeholder.plotly_chart(fig,use_container_width=True)
+            time.sleep(0.4/animation_speed)
+
+    else:
+        base_signal = np.sin(2*np.pi*50*time_points) + 0.1*np.random.randn(len(time_points))
         if fault_type=="Normal Operation":
-            signal_data = base_signal
-            fault_detected = False
-            impulses = np.zeros_like(time_points)
+            final_signal = base_signal
+            final_fault = False
         elif "Bearing_Fault" in fault_type:
-            prob = 0.01*severity*(1+0.5*np.sin(frame*0.3))
-            impulses = (np.random.rand(len(time_points))<prob).astype(float)*severity*0.8
-            signal_data = base_signal + impulses
-            fault_detected = True
+            impulses = (np.random.rand(len(time_points))<0.02*severity).astype(float)*severity*0.8
+            final_signal = base_signal + impulses
+            final_fault = True
         elif fault_type=="Imbalance":
-            signal_data = base_signal*(1 + 0.3*severity*np.sin(2*np.pi*50*time_points))
-            impulses = np.zeros_like(time_points)
-            fault_detected = True
-        else: # Misalignment
+            final_signal = base_signal*(1 + 0.3*severity*np.sin(2*np.pi*50*time_points))
+            final_fault = True
+        else:
             harmonic = 0.4*severity*np.sin(2*np.pi*100*time_points)
-            signal_data = base_signal + harmonic
-            impulses = np.zeros_like(time_points)
-            fault_detected = True
+            final_signal = base_signal + harmonic
+            final_fault = True
 
-        suppressed_signal, damper_force = simulate_dampers(signal_data,fault_detected,severity,dampers_enabled)
-
-        if frame==num_frames-1:
-            final_signal = signal_data
-            final_suppressed = suppressed_signal
-            final_fault = fault_detected
+        final_suppressed = simulate_dampers(final_signal, final_fault, severity, dampers_enabled)[0]
 
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=time_points*1000, y=signal_data, mode='lines', name='Vibration', line=dict(color='blue')))
-        if fault_detected:
-            fig.add_trace(go.Scatter(x=time_points*1000, y=suppressed_signal, mode='lines', name='Suppressed', line=dict(color='green')))
-        fig.update_layout(title=f"Live Simulation - Frame {frame+1}/{num_frames}", height=400)
-        animation_placeholder.plotly_chart(fig,use_container_width=True)
-        time.sleep(0.3)
+        color = "green" if not final_fault else "red"
+        fig.add_trace(go.Scatter(x=time_points*1000, y=final_signal, mode='lines', name='Vibration', line=dict(color=color)))
+        if dampers_enabled and final_fault:
+            fig.add_trace(go.Scatter(x=time_points*1000, y=final_suppressed, mode='lines', name='Suppressed', line=dict(color='blue')))
+        fig.update_layout(title=f"Static Simulation - {fault_type}", height=400)
+        st.plotly_chart(fig,use_container_width=True)
 
-    # ==================== Финальный кадр ====================
     features = calculate_features(final_signal)
     show_engineering_panel(final_signal, final_suppressed, final_fault, severity, fault_type, dampers_enabled, features)
-
     prevented_hours, potential_savings, system_cost = show_business_impact(severity)
     roi = potential_savings/system_cost if system_cost>0 else 0
 
-    linkedin_text, linkedin_img = generate_linkedin_post(fault_type,severity,prevented_hours,potential_savings,roi,fig)
+    linkedin_text, linkedin_img = generate_linkedin_post(fault_type, severity, prevented_hours, potential_savings, roi, fig)
     st.subheader("📢 LinkedIn-ready Post")
     st.text_area("Suggested text:", linkedin_text,height=200)
     if linkedin_img:
         st.image(linkedin_img,caption="Attach this graph to your post",use_container_width=True)
 
-# ==================== Стек технологии ====================
+# ==================== Технологический стек ====================
 with st.expander("🔧 Under the Hood: AVCS DNA Technology Stack"):
     st.markdown("""
     **Industrial-Grade Vibration Monitoring System**
@@ -193,4 +219,4 @@ with c1: st.markdown("**📞 Technical Briefing**\nLive demo with your data")
 with c2: st.markdown("**📧 Contact**\nyeruslan@operationalexcellence.com")
 with c3: st.markdown("**📚 Resources**\nCase studies & ROI analysis")
 st.markdown("---")
-st.markdown("**Operational Excellence, Delivered** | © 2025 AVCS DNA Technology Simulator v3.6")
+st.markdown("**Operational Excellence, Delivered** | © 2025 AVCS DNA Technology Simulator v3.8")
