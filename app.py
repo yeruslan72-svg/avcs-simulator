@@ -15,25 +15,40 @@ st.markdown("""
 
 def calculate_features(signal_data):
     """Расчет всех фич как в промышленной системе"""
+    if len(signal_data) == 0:
+        return {'rms': 0, 'pkpk': 0, 'crest': 0, 'variance': 0, 'centroid': 0, 'dominant_freqs': [0, 0], 'kurtosis': 0}
+    
     rms = np.sqrt(np.mean(signal_data**2))
     pkpk = np.ptp(signal_data)
     crest = np.max(np.abs(signal_data)) / rms if rms > 0 else 0
     variance = np.var(signal_data)
     
     # Упрощенный спектральный анализ
-    fft = np.fft.fft(signal_data)
-    freqs = np.fft.fftfreq(len(signal_data))
-    magnitude = np.abs(fft)
-    
-    # Спектральный центроид
-    if np.sum(magnitude) > 0:
-        centroid = np.sum(freqs * magnitude) / np.sum(magnitude)
-    else:
+    try:
+        fft = np.fft.fft(signal_data)
+        freqs = np.fft.fftfreq(len(signal_data))
+        magnitude = np.abs(fft)
+        
+        # Спектральный центроид
+        if np.sum(magnitude) > 0:
+            centroid = np.sum(freqs * magnitude) / np.sum(magnitude)
+        else:
+            centroid = 0
+        
+        # Доминантные частоты
+        dominant_idx = np.argsort(magnitude)[-3:][::-1]
+        dominant_freqs = [freqs[i] * 1000 for i in dominant_idx if i < len(freqs)]
+        
+        # Заполняем до 2 элементов
+        while len(dominant_freqs) < 2:
+            dominant_freqs.append(0)
+            
+        kurtosis_val = np.mean(magnitude**4) / (np.mean(magnitude**2)**2) - 3 if np.mean(magnitude**2) > 0 else 0
+        
+    except:
         centroid = 0
-    
-    # Доминантные частоты
-    dominant_idx = np.argsort(magnitude)[-3:][::-1]
-    dominant_freqs = freqs[dominant_idx] * 1000
+        dominant_freqs = [0, 0]
+        kurtosis_val = 0
     
     return {
         'rms': rms,
@@ -42,19 +57,20 @@ def calculate_features(signal_data):
         'variance': variance,
         'centroid': abs(centroid * 1000),
         'dominant_freqs': dominant_freqs[:2],
-        'kurtosis': np.mean(magnitude**4) / (np.mean(magnitude**2)**2) - 3 if np.mean(magnitude**2) > 0 else 0
+        'kurtosis': kurtosis_val
     }
 
 def simulate_dampers(signal_data, fault_detected, severity, enabled=True):
-    """Полная модель демпферов - ВОЗВРАЩАЕТ МАССИВ!"""
+    """Полная модель демпферов"""
     n = len(signal_data)
+    if n == 0:
+        return np.array([]), np.array([])
+        
     if not enabled or not fault_detected:
-        # Легкое демпфирование - массив из 500
         return signal_data * 0.98, np.full(n, 500)
     
-    # Активное подавление - массив сил
     damper_force_value = min(8000, severity * 1600)
-    damper_force = np.full(n, damper_force_value)  # Массив одинаковых значений
+    damper_force = np.full(n, damper_force_value)
     suppression_factor = np.exp(-0.3 * damper_force_value / 8000)
     suppressed_signal = signal_data * suppression_factor
     
@@ -67,8 +83,10 @@ def show_engineering_panel(signal_data, suppressed_signal, fault_detected,
     st.subheader("🔧 Engineering Panel - Real-time Diagnostics")
     
     # Расчет эффективности
-    if dampers_enabled and fault_detected:
-        vibration_reduction = (1 - np.std(suppressed_signal)/np.std(signal_data)) * 100
+    if dampers_enabled and fault_detected and len(signal_data) > 0 and len(suppressed_signal) > 0:
+        std_signal = np.std(signal_data)
+        std_suppressed = np.std(suppressed_signal)
+        vibration_reduction = (1 - std_suppressed/std_signal) * 100 if std_signal > 0 else 0
     else:
         vibration_reduction = 0
     
@@ -84,10 +102,8 @@ def show_engineering_panel(signal_data, suppressed_signal, fault_detected,
     with col_eng2:
         st.markdown("**📊 Frequency-domain Features**")
         st.metric("Spectral Centroid", f"{features['centroid']:.1f} Hz")
-        if len(features['dominant_freqs']) > 0:
-            st.metric("Dominant Freq 1", f"{features['dominant_freqs'][0]:.1f} Hz")
-        if len(features['dominant_freqs']) > 1:
-            st.metric("Dominant Freq 2", f"{features['dominant_freqs'][1]:.1f} Hz")
+        st.metric("Dominant Freq 1", f"{features['dominant_freqs'][0]:.1f} Hz")
+        st.metric("Dominant Freq 2", f"{features['dominant_freqs'][1]:.1f} Hz")
         
     with col_eng3:
         st.markdown("**⚡ System Diagnosis**")
@@ -98,7 +114,7 @@ def show_engineering_panel(signal_data, suppressed_signal, fault_detected,
         st.metric("Confidence", f"{confidence:.1%}")
         st.metric("Vibration Reduction", f"{vibration_reduction:.1f}%")
 
-def show_business_impact(severity, downtime_cost=10000):
+def show_business_impact(severity):
     """Бизнес-метрики и ROI калькулятор"""
     st.subheader("📈 Business Impact Estimation")
     
@@ -144,15 +160,15 @@ if run_simulation:
         # АНИМАЦИОННАЯ ВЕРСИЯ
         animation_placeholder = st.empty()
         progress_bar = st.progress(0)
-        status_text = st.empty()
+        status_display = st.empty()  # Переименовал переменную!
         
-        num_frames = 10  # Уменьшил для скорости
-        time_points = np.linspace(0, 0.1, 500)  # Уменьшил размер буфера
+        num_frames = 8
+        time_points = np.linspace(0, 0.1, 400)
         
         for frame in range(num_frames):
             progress = (frame + 1) / num_frames
             progress_bar.progress(progress)
-            status_text.text(f"🎬 Live Simulation: Frame {frame+1}/{num_frames}")
+            status_display.text(f"🎬 Live Simulation: Frame {frame+1}/{num_frames}")  # Исправлено!
             
             # Генерация сигнала
             base_frequency = 50
@@ -165,7 +181,7 @@ if run_simulation:
                 fault_detected = False
                 impulses = np.zeros_like(time_points)
             elif "Bearing_Fault" in fault_type:
-                impulse_prob = 0.005 * severity  # Увеличил вероятность
+                impulse_prob = 0.01 * severity
                 impulses = (np.random.rand(len(time_points)) < impulse_prob).astype(float) * severity * 0.8
                 signal_data = base_signal + impulses
                 fault_detected = True
@@ -180,10 +196,10 @@ if run_simulation:
                 fault_detected = severity >= 1
                 impulses = np.zeros_like(time_points)
 
-            # Демпферы - ТЕПЕРЬ ВОЗВРАЩАЕТ МАССИВ!
+            # Демпферы
             suppressed_signal, damper_force = simulate_dampers(signal_data, fault_detected, severity, dampers_enabled)
             
-            # Визуализация - ТЕПЕРЬ damper_force это МАССИВ!
+            # Визуализация
             fig = go.Figure()
             fig.add_trace(go.Scatter(
                 x=time_points*1000, 
@@ -199,10 +215,10 @@ if run_simulation:
                     y=impulses, 
                     mode='lines', 
                     name='Bearing Impacts', 
-                    line=dict(color='orange', width=3)
+                    line=dict(color='orange', width=2)
                 ))
             
-            if dampers_enabled and fault_detected:
+            if dampers_enabled and fault_detected and len(suppressed_signal) > 0:
                 fig.add_trace(go.Scatter(
                     x=time_points*1000, 
                     y=suppressed_signal, 
@@ -211,23 +227,23 @@ if run_simulation:
                     line=dict(color='green', width=2)
                 ))
                 
-                # ТЕПЕРЬ damper_force это МАССИВ - ошибки нет!
-                fig.add_trace(go.Scatter(
-                    x=time_points*1000, 
-                    y=damper_force/50,  # Масштабируем для визуализации
-                    mode='lines', 
-                    name='Damper Force/50', 
-                    line=dict(color='red', width=2, dash='dot'),
-                    yaxis='y2'
-                ))
-                
-                fig.update_layout(
-                    yaxis2=dict(
-                        title="Damper Force (N/50)",
-                        overlaying='y',
-                        side='right'
+                if len(damper_force) > 0:
+                    fig.add_trace(go.Scatter(
+                        x=time_points*1000, 
+                        y=damper_force/50,
+                        mode='lines', 
+                        name='Damper Force/50', 
+                        line=dict(color='red', width=2, dash='dot'),
+                        yaxis='y2'
+                    ))
+                    
+                    fig.update_layout(
+                        yaxis2=dict(
+                            title="Damper Force (N/50)",
+                            overlaying='y',
+                            side='right'
+                        )
                     )
-                )
             
             # Статус аномалии
             status_color = "green" if not fault_detected else "red"
@@ -240,22 +256,22 @@ if run_simulation:
                 bgcolor="white", 
                 bordercolor=status_color,
                 borderwidth=2,
-                font=dict(color=status_color, size=14)
+                font=dict(color=status_color, size=12)
             )
             
             fig.update_layout(
-                title=f"Live Vibration Monitoring - Frame {frame+1}/{num_frames}", 
+                title=f"Frame {frame+1}/{num_frames} - {fault_type}", 
                 height=400,
                 showlegend=True,
-                xaxis_title="Time (milliseconds)",
-                yaxis_title="Vibration Amplitude"
+                xaxis_title="Time (ms)",
+                yaxis_title="Amplitude"
             )
             
             animation_placeholder.plotly_chart(fig, use_container_width=True)
-            time.sleep(0.5)  # Фиксированная задержка
+            time.sleep(0.3)
         
         progress_bar.empty()
-        status_text.success("✅ Live simulation completed!")
+        status_display.success("✅ Live simulation completed!")  # Исправлено!
         
         # Финальный анализ
         features = calculate_features(signal_data)
@@ -271,7 +287,7 @@ if run_simulation:
             signal_data = base_signal
             fault_detected = False
         elif "Bearing_Fault" in fault_type:
-            impulses = (np.random.rand(1000) < 0.01 * severity).astype(float) * severity * 0.8
+            impulses = (np.random.rand(1000) < 0.02 * severity).astype(float) * severity * 0.8
             signal_data = base_signal + impulses
             fault_detected = True
         else:
@@ -284,29 +300,52 @@ if run_simulation:
         # График
         fig = go.Figure()
         color = "green" if not fault_detected else "red"
-        fig.add_trace(go.Scatter(y=signal_data, mode='lines', name='Vibration', line=dict(color=color)))
+        fig.add_trace(go.Scatter(y=signal_data, mode='lines', name='Vibration', line=dict(color=color, width=2)))
         
         if dampers_enabled and fault_detected:
-            fig.add_trace(go.Scatter(y=suppressed_signal, mode='lines', name='Suppressed', line=dict(color='blue')))
+            fig.add_trace(go.Scatter(y=suppressed_signal, mode='lines', name='Suppressed', line=dict(color='blue', width=2)))
         
+        fig.update_layout(height=400, title=f"Static Analysis - {fault_type}")
         st.plotly_chart(fig, use_container_width=True)
+        
         show_engineering_panel(signal_data, suppressed_signal, fault_detected, 
                              severity, fault_type, dampers_enabled, features)
 
 # Бизнес-метрики
-if not run_simulation:
+if run_simulation:
+    show_business_impact(severity)
+else:
     st.subheader("📈 Business Impact Estimation")
     st.info("Run simulation to see ROI calculations based on fault severity")
 
 # Technology Stack
-with st.expander("🔧 Technology Stack"):
+with st.expander("🔧 Under the Hood: AVCS DNA Technology Stack"):
     st.markdown("""
     **Industrial-Grade Vibration Monitoring System**
     - Real-time signal processing at 10kHz
     - Machine Learning anomaly detection
-    - Active vibration control with MR dampers
+    - Active vibration control with MR dampers (0-8000N)
+    - 12 features per sensor for precise diagnostics
     - >2000% ROI from prevented downtime
     """)
 
+# Call-to-Action
 st.markdown("---")
-st.markdown("**Operational Excellence, Delivered** | © 2024 AVCS DNA Technology Simulator v3.2")
+st.subheader("🚀 Ready to Deploy AVCS DNA on Your Equipment?")
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.markdown("**📞 Technical Briefing**")
+    st.markdown("Live demo with your data")
+
+with col2:
+    st.markdown("**📧 Contact**")
+    st.markdown("yeruslan@operationalexcellence.com")
+
+with col3:
+    st.markdown("**📚 Resources**")
+    st.markdown("Case studies & ROI analysis")
+
+st.markdown("---")
+st.markdown("**Operational Excellence, Delivered** | © 2024 AVCS DNA Technology Simulator v3.3")
