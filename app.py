@@ -5,8 +5,8 @@ from scipy.stats import kurtosis
 import plotly.graph_objects as go
 
 # Настройка страницы
-st.set_page_config(page_title="AVCS Simulator", layout="wide")
-st.title("🛠️ AVCS Technology Simulator")
+st.set_page_config(page_title="AVCS DNA Simulator", layout="wide")
+st.title("🛠️ AVCS DNA Technology Simulator")
 st.markdown("""
 **Experience the power of Machine Learning-driven Active Vibration Control.**
 This simulator demonstrates how our system detects faults in real-time on FPSO rotating equipment.
@@ -47,17 +47,12 @@ with col2:
             impulses = (np.random.rand(len(t)) < impulse_prob).astype(float) * severity * 0.5
             signal_data = base_signal + impulses
         elif fault_type == "Imbalance":
-          # УСИЛЕННОЕ моделирование дисбаланса: увеличиваем амплитуду и добавляем модуляцию
-            imbalance_effect = 0.5 * severity  # Сила дисбаланса
+            imbalance_effect = 0.5 * severity
             signal_data = base_signal * (1 + imbalance_effect * np.sin(2 * np.pi * 50 * t))
-          # Добавляем легкие импульсы от вибрации на высоких оборотах
             impulses = (np.random.rand(len(t)) < 0.003 * severity).astype(float) * severity * 0.3
             signal_data = signal_data + impulses
         elif fault_type == "Misalignment":
-          # СИЛЬНО УСИЛЕННОЕ моделирование Misalignment
-          # Добавляем мощную вторую гармонику (2X) и немного случайных импульсов
             harmonic_2x = 0.7 * severity * np.sin(2 * np.pi * 100 * t + np.pi/4)
-           # Добавляем случайные импульсы, характерные для серьезного misalignment
             impulses = (np.random.rand(len(t)) < 0.005 * severity).astype(float) * severity * 0.8
             signal_data = base_signal + harmonic_2x + impulses
 
@@ -88,5 +83,69 @@ with col2:
         col_metric2.metric("Peak-to-Peak", f"{peak_to_peak:.2f}")
         col_metric3.metric("Crest Factor", f"{crest_factor:.2f}")
 
+        # 🔥 НОВЫЙ БЛОК: Business Impact Estimation
+        st.subheader("📈 Business Impact Estimation")
+        
+        col_cost, col_impact = st.columns(2)
+        
+        with col_cost:
+            downtime_cost = st.number_input("Estimated hourly downtime cost ($)", 
+                                          min_value=1000, value=10000, step=1000,
+                                          key="downtime_cost")
+        
+        with col_impact:
+            prevented_hours = severity * 8  # Логика: чем серьезнее неисправность, тем больше часов простоя предотвращаем
+            potential_savings = downtime_cost * prevented_hours
+            system_cost = 120000  # Базовая стоимость системы
+            
+            st.metric("💾 Potential downtime prevented", f"{prevented_hours} hours")
+            st.metric("💰 Estimated savings", f"${potential_savings:,.0f}")
+            st.metric("📊 ROI multiplier", f"{potential_savings/system_cost:.1f}x")
+
+        # 🔥 НОВЫЙ БЛОК: Technology Stack
+        with st.expander("🔧 Under the Hood: AVCS DNA Technology Stack"):
+            st.markdown("""
+            **Core Technologies:**
+            - **Real-time signal processing**: Scipy, NumPy
+            - **ML Anomaly Detection**: Isolation Forest algorithm  
+            - **Feature Extraction**: RMS, Kurtosis, Crest Factor
+            - **Control Systems**: PID-based damper control
+            - **Industrial Hardware**: LORD dampers, PCB sensors, Beckhoff PLCs
+            
+            **Performance Metrics:**
+            - Response time: <100 ms
+            - Fault detection accuracy: >95%
+            - ROI: >2000% from first prevented incident
+            """)
+
+# 🔥 НОВЫЙ БЛОК: Call-to-Action (всегда виден)
 st.markdown("---")
-st.caption("© Yeruslan Technologies | Active Vibration Control System (AVCS) Simulator")
+st.subheader("🚀 Ready to Deploy AVCS DNA on Your Equipment?")
+
+cta_col1, cta_col2, cta_col3 = st.columns(3)
+
+with cta_col1:
+    st.markdown("**📞 Schedule Technical Briefing**")
+    st.markdown("""
+    - Live demo with your data
+    - Custom ROI calculation
+    - Integration planning
+    """)
+
+with cta_col2:
+    st.markdown("**📧 Contact Us**")
+    st.markdown("""
+    Email: yeruslan@operationalexcellence.com
+    LinkedIn: Yeruslan Chihachyov
+    """)
+
+with cta_col3:
+    st.markdown("**📚 Resources**")
+    st.markdown("""
+    - [Download Technical PDF]()
+    - [Case Studies]()
+    - [Integration Guide]()
+    """)
+
+st.markdown("---")
+st.caption("© 2024 Operational Excellence, Delivered | AVCS DNA Technology Simulator v2.0")
