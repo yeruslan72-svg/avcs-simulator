@@ -160,3 +160,60 @@ if run_sim:
     st.metric("💾 Downtime Prevented", f"{prevented_hours} hours")
     st.metric("💰 Estimated Savings", f"${potential_savings:,.0f}")
     st.metric("📊 ROI multiplier", f"{roi:.1f}x")
+    # ==================== PROFESSIONAL REPORT GENERATOR ====================
+st.subheader("📊 Professional Report Generator")
+
+def generate_text_report(features_dict, fault_type, severity, prevented_hours, potential_savings, roi):
+    report = f"""
+AVCS DNA SIMULATION REPORT
+Generated on: {time.strftime('%Y-%m-%d %H:%M:%S')}
+
+FAULT SIMULATION:
+- Type: {fault_type}
+- Severity: {severity}/5
+- Downtime Prevented: {prevented_hours} hours
+- Estimated Savings: ${potential_savings:,.0f}
+- ROI: {roi:.1f}x
+
+TECHNICAL PARAMETERS:
+"""
+    for s, f in features_dict.items():
+        report += f"- {s}: RMS={f['rms']:.4f}, PkPk={f['pkpk']:.3f}, Crest={f['crest']:.2f}\n"
+    report += "\nConclusion: AVCS DNA shows effective vibration control and significant ROI potential."
+    return report
+
+def generate_pdf_report(filename="avcs_simulation_report.pdf"):
+    if not REPORTLAB_AVAILABLE:
+        return None
+    try:
+        c = canvas.Canvas(filename, pagesize=letter)
+        width, height = letter
+        c.setFont("Helvetica-Bold", 16)
+        c.drawString(50, height-50, "AVCS DNA Simulation Report")
+        c.setFont("Helvetica", 12)
+        c.drawString(50, height-70, f"Generated on: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+        y = height-100
+        c.setFont("Helvetica", 10)
+        for s, f in features_dict.items():
+            c.drawString(50, y, f"{s}: RMS={f['rms']:.4f}, PkPk={f['pkpk']:.3f}, Crest={f['crest']:.2f}")
+            y -= 15
+        c.showPage()
+        c.save()
+        return filename
+    except Exception as e:
+        st.error(f"PDF generation failed: {e}")
+        return None
+
+# Кнопки для генерации
+if REPORTLAB_AVAILABLE:
+    if st.button("📄 Generate PDF Report"):
+        pdf_file = generate_pdf_report()
+        if pdf_file:
+            with open(pdf_file, "rb") as f:
+                st.download_button("📥 Download PDF Report", f, file_name="avcs_simulation_report.pdf")
+            st.success("✅ PDF report generated successfully!")
+else:
+    st.info("💡 Reportlab not installed, generating text report instead.")
+    if st.button("📄 Generate Text Report"):
+        text_report = generate_text_report(features_dict, fault_type, severity, prevented_hours, potential_savings, roi)
+        st.text_area("Professional Report:", text_report, height=300)
